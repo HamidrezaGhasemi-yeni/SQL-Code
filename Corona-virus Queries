@@ -1,0 +1,101 @@
+select*
+from sql_portfoliue..covid_vaccination
+where continent is not null  -- دیتاهای قاره ها رو هم داریم برای نمایش ندادن اونا
+order by 3,4
+--انتخاب داده هایی که با اونا کار میکنیم
+select location,date,total_cases,new_cases,total_deaths,population
+from sql_portfoliue..covid_death
+where 'continent' is not null
+order by 1,2
+
+--مقایسه بین مجموع کشته شدگان و مجموع مبتلا شده ها
+select location,date,total_cases,total_deaths,((total_deaths)/(total_cases+0.00000000000001))*100 as death_ratio_percentage
+from sql_portfoliue..covid_death
+where 'continent' is not null
+order by 1,2
+
+--مقایسه بین مجموع کشته شدگان و مجموع مبتلا شده ها در ایران
+select location,date,total_cases,total_deaths,((total_deaths)/(total_cases+0.00000000000001))*100 as death_ratio_percentage
+from sql_portfoliue..covid_death
+where location like '%iran%'
+order by 1,2
+--مقایسه مبتلا شدگان نسبت به جمعیت در ایران
+select location,date,total_cases,total_deaths,population, (total_cases/population)*100 as persentage_of_infections
+from sql_portfoliue..covid_death
+where location like '%iran%'
+order by 1,2
+--بیشترین نسبت مبتلایان نسبت به جمعیت
+select location,max(total_cases)as highes_infection_count,population, max(total_cases/population)*100 as highest_persentage_of_infections
+from sql_portfoliue..covid_death
+where 'continent' is not null
+group by location ,population
+order by highest_persentage_of_infections desc
+--بیشترین کشته شدگان نسبت به جمعیت
+select location,max(total_deaths)as highes_death_count,population, max(total_deaths/population)*100 as highest_persentage_of_death
+from sql_portfoliue..covid_death
+where 'continent' is not null
+group by location ,population
+order by highest_persentage_of_death desc
+
+--ارقام جهانی
+select date ,sum(new_cases) as total_inflaction,sum(new_deaths)as total_death
+from sql_portfoliue..covid_death
+where continent is not null
+group by date
+order by 1 ,2
+
+
+-- افراد واکسینه شده به کل جمعیت
+select  dth.location,dth.date,dth.population,vac.new_vaccinations 
+,sum(convert(bigint,vac.new_vaccinations )) over(partition by(dth.location) order by dth.location ,dth.date) as roaling_people_vaccinated
+--(roaling_people_vaccinated/dth.population)*100
+from sql_portfoliue..covid_death dth
+join sql_portfoliue..covid_vaccination vac
+	on dth.location = vac.location
+	and dth.date = vac.date
+where dth.continent is not null 
+order by   dth.location ,dth.date
+
+--هاCTE با استفاده از {(roaling_people_vaccinated/dth.population)*100}محاسبه 
+
+With population_vs_vaccination(continent , location,date,population ,new_vaccinations,roaling_people_vaccinated)
+as
+(select dth.continent , dth.location,dth.date,dth.population,vac.new_vaccinations 
+,sum(convert(bigint,vac.new_vaccinations )) over(partition by(dth.location) order by dth.location ,dth.date) as roaling_people_vaccinated
+from sql_portfoliue..covid_death dth
+join sql_portfoliue..covid_vaccination vac
+	on dth.location = vac.location
+	and dth.date = vac.date
+where dth.continent is not null
+)
+select *,(roaling_people_vaccinated/population)*100
+from population_vs_vaccination
+
+--Temp tablesبا استفاده از {(roaling_people_vaccinated/dth.population)*100}محاسبه 
+drop table if exists #persentage_vaccinated_people
+create table #persentage_vaccinated_people
+(continent nvarchar(255),
+locatin nvarchar(255),
+date datetime ,
+population numeric ,
+new_vaccianations numeric,
+rolling_people_vaccinated bigint)
+insert into #persentage_vaccinated_people
+select dth.continent , dth.location,dth.date,dth.population,vac.new_vaccinations 
+,sum(convert(bigint,vac.new_vaccinations )) over(partition by(dth.location) order by dth.location ,dth.date) as roling_people_vaccinated
+from sql_portfoliue..covid_death dth
+join sql_portfoliue..covid_vaccination vac
+	on dth.location = vac.location
+	and dth.date = vac.date
+select*,(rolling_people_vaccinated/population)*100
+from #persentage_vaccinated_people
+
+--ساختن view
+create view persentage_fof_vaccinated_people as
+select dth.continent , dth.location,dth.date,dth.population,vac.new_vaccinations 
+,sum(convert(bigint,vac.new_vaccinations )) over(partition by(dth.location) order by dth.location ,dth.date) as roling_people_vaccinated
+from sql_portfoliue..covid_death dth
+join sql_portfoliue..covid_vaccination vac
+	on dth.location = vac.location
+	and dth.date = vac.date
+where dth.continent is not null
